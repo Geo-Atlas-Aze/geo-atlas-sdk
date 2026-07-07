@@ -32,7 +32,7 @@ Full SDK architecture (M0–M2, data layer, roadmap): see the GeoAtlas workspace
 |------------|------|
 | [geo-data-generator](https://github.com/Geo-Atlas-Aze/geo-data-generator) | Dataset pipeline (OSM → release) |
 | [geo-datasets](https://github.com/Geo-Atlas-Aze/geo-datasets) | Published CDN artifacts (`az/v*`) |
-| **geoatlas-sdk** (this repo) | TypeScript SDK — load CDN data, render maps |
+| [geo-atlas-sdk](https://github.com/Geo-Atlas-Aze/geo-atlas-sdk) | TypeScript SDK — load CDN data, render maps (this repo) |
 
 ## Data source
 
