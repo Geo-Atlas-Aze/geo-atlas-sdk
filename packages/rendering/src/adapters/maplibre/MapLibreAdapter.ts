@@ -13,12 +13,19 @@ import { DEFAULT_MAP_STYLE } from '../../styles/defaultStyle.js';
 import type {
   Bounds,
   CameraOptions,
+  CameraState,
   FitBoundsOptions,
   GeoJsonData,
   LayerDefinition,
   LayerVisibility,
+  MapClickEvent,
+  RendererErrorEvent,
+  RendererEventHandler,
+  RendererEventMap,
+  RendererEventType,
   RendererOptions,
   SourceDefinition,
+  Unsubscribe,
 } from '../../types.js';
 
 type MapLibreModule = typeof import('maplibre-gl');
@@ -50,6 +57,8 @@ export class MapLibreAdapter implements IRenderer {
   private maplibregl: MapLibreModule | null = null;
   private navigationControl: NavigationControl | null = null;
   private attributionControl: AttributionControl | null = null;
+  private readonly handlers = new Map<RendererEventType, Set<RendererEventHandler<RendererEventType>>>();
+  private mapEventsBound = false;
 
   /** @inheritdoc */
   async initialize(container: HTMLElement, options: RendererOptions = {}): Promise<void> {
@@ -100,6 +109,9 @@ export class MapLibreAdapter implements IRenderer {
       });
       this.map.addControl(this.attributionControl, 'bottom-right');
     }
+
+    this.bindMapEvents();
+    this.emit('load', undefined);
   }
 
   /** @inheritdoc */
@@ -109,6 +121,8 @@ export class MapLibreAdapter implements IRenderer {
     this.maplibregl = null;
     this.navigationControl = null;
     this.attributionControl = null;
+    this.handlers.clear();
+    this.mapEventsBound = false;
   }
 
   /** @inheritdoc */
@@ -294,6 +308,84 @@ export class MapLibreAdapter implements IRenderer {
       return;
     }
     map.setLayoutProperty(layerId, 'visibility', visibility);
+  }
+
+  /** @inheritdoc */
+  on<T extends RendererEventType>(event: T, handler: RendererEventHandler<T>): Unsubscribe {
+    const bucket = this.handlers.get(event) ?? new Set<RendererEventHandler<RendererEventType>>();
+    bucket.add(handler as RendererEventHandler<RendererEventType>);
+    this.handlers.set(event, bucket);
+    return () => {
+      this.off(event, handler);
+    };
+  }
+
+  /** @inheritdoc */
+  off<T extends RendererEventType>(event: T, handler: RendererEventHandler<T>): void {
+    const bucket = this.handlers.get(event);
+    if (!bucket) {
+      return;
+    }
+    bucket.delete(handler as RendererEventHandler<RendererEventType>);
+    if (bucket.size === 0) {
+      this.handlers.delete(event);
+    }
+  }
+
+  private bindMapEvents(): void {
+    if (this.mapEventsBound || !this.map) {
+      return;
+    }
+
+    const map = this.map;
+    this.mapEventsBound = true;
+
+    map.on('click', (event) => {
+      const payload: MapClickEvent = {
+        lngLat: Object.freeze([event.lngLat.lng, event.lngLat.lat] as const),
+        point: Object.freeze([event.point.x, event.point.y] as const),
+      };
+      this.emit('click', payload);
+    });
+
+    map.on('movestart', () => {
+      this.emit('movestart', this.readCameraState());
+    });
+
+    map.on('moveend', () => {
+      this.emit('moveend', this.readCameraState());
+    });
+
+    map.on('zoomend', () => {
+      this.emit('zoomend', this.readCameraState());
+    });
+
+    map.on('error', (event) => {
+      const payload: RendererErrorEvent = {
+        message: event.error?.message ?? 'MapLibre runtime error',
+        cause: event.error,
+      };
+      this.emit('error', payload);
+    });
+  }
+
+  private readCameraState(): CameraState {
+    return {
+      center: this.getCenter(),
+      zoom: this.getZoom(),
+      bounds: this.getBounds(),
+    };
+  }
+
+  private emit<T extends RendererEventType>(event: T, payload: RendererEventMap[T]): void {
+    const bucket = this.handlers.get(event);
+    if (!bucket) {
+      return;
+    }
+
+    for (const handler of bucket) {
+      (handler as RendererEventHandler<T>)(payload);
+    }
   }
 
   private requireMap(): MapLibreMap {

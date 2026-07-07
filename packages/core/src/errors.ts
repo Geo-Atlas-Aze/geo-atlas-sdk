@@ -4,7 +4,9 @@ export type GeoAtlasErrorCode =
   | 'CDN_UNAVAILABLE'
   | 'UNSUPPORTED_COUNTRY'
   | 'OFFLINE_CACHE_MISS'
-  | 'ARTIFACT_NOT_ALLOWED';
+  | 'ARTIFACT_NOT_ALLOWED'
+  | 'RENDERER_INIT_FAILED'
+  | 'UNSUPPORTED_ENGINE';
 
 export class GeoAtlasError extends Error {
   readonly code: GeoAtlasErrorCode;

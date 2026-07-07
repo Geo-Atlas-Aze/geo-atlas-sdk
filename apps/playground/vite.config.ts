@@ -14,6 +14,7 @@ export default defineConfig({
       '@geoatlas/sdk-core': path.resolve(rootDir, '../../packages/core/src/index.ts'),
       '@geoatlas/sdk-dataset': path.resolve(rootDir, '../../packages/dataset/src/index.ts'),
       '@geoatlas/sdk-rendering': path.resolve(rootDir, '../../packages/rendering/src/index.ts'),
+      '@geoatlas/sdk-react': path.resolve(rootDir, '../../packages/react/src/index.ts'),
     },
   },
 });

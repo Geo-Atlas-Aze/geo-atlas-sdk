@@ -129,8 +129,45 @@ export interface FitBoundsOptions {
   readonly maxZoom?: number;
 }
 
-/** Renderer event types for future engine bindings. */
+/** Renderer event types for engine bindings. */
 export type RendererEventType = 'load' | 'click' | 'movestart' | 'moveend' | 'zoomend' | 'error';
+
+/** Function that unsubscribes from a renderer event. */
+export type Unsubscribe = () => void;
+
+/** Map click payload exposed to public API consumers. */
+export interface MapClickEvent {
+  readonly lngLat: LngLat;
+  readonly point: readonly [x: number, y: number];
+}
+
+/** Camera state snapshot for move/zoom events. */
+export interface CameraState {
+  readonly center: LngLat;
+  readonly zoom: number;
+  readonly bounds: Bounds;
+}
+
+/** Renderer error payload. */
+export interface RendererErrorEvent {
+  readonly message: string;
+  readonly cause?: unknown;
+}
+
+/** Event payload map keyed by renderer event type. */
+export interface RendererEventMap {
+  readonly load: undefined;
+  readonly click: MapClickEvent;
+  readonly movestart: CameraState;
+  readonly moveend: CameraState;
+  readonly zoomend: CameraState;
+  readonly error: RendererErrorEvent;
+}
+
+/** Typed handler for a specific renderer event. */
+export type RendererEventHandler<T extends RendererEventType> = (
+  payload: RendererEventMap[T],
+) => void;
 
 /** Base renderer event payload. */
 export interface RendererEvent {

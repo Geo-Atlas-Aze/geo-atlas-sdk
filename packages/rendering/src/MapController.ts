@@ -10,7 +10,16 @@ import {
   SOURCE_IDS,
 } from './constants.js';
 import type { IRenderer } from './contracts/IRenderer.js';
-import type { Bounds, CreateMapOptions, FitBoundsOptions, RendererOptions } from './types.js';
+import type {
+  Bounds,
+  CameraOptions,
+  CreateMapOptions,
+  FitBoundsOptions,
+  RendererEventHandler,
+  RendererEventType,
+  RendererOptions,
+  Unsubscribe,
+} from './types.js';
 import { computeBoundsFromGeoJson, parseGeoJsonArtifact } from './utils/geoJson.js';
 
 export interface MapControllerOptions {
@@ -156,6 +165,51 @@ export class MapController {
       zoom: AZ_DEFAULT_VIEW.zoom,
       duration: options?.duration,
     });
+  }
+
+  /**
+   * Renders layers that match the provided presets.
+   */
+  showLayers(layers: readonly LayerPreset[]): void {
+    const layerSet = new Set(layers);
+    const showAdmin =
+      layerSet.has('administrative') || layerSet.has('boundaries');
+    const showRoads = layerSet.has('roads') || layerSet.has('transport');
+
+    if (showAdmin) {
+      this.showAdministrativeBoundaries();
+    }
+    if (showRoads) {
+      this.showRoads();
+    }
+  }
+
+  /**
+   * Animates the camera to the given view.
+   */
+  async flyTo(options: CameraOptions): Promise<void> {
+    await this.renderer.flyTo(options);
+  }
+
+  /**
+   * Fits the camera to explicit geographic bounds.
+   */
+  async fitBounds(bounds: Bounds, options?: FitBoundsOptions): Promise<void> {
+    await this.renderer.fitBounds(bounds, options);
+  }
+
+  /**
+   * Subscribes to renderer events.
+   */
+  on<T extends RendererEventType>(event: T, handler: RendererEventHandler<T>): Unsubscribe {
+    return this.renderer.on(event, handler);
+  }
+
+  /**
+   * Removes a renderer event handler.
+   */
+  off<T extends RendererEventType>(event: T, handler: RendererEventHandler<T>): void {
+    this.renderer.off(event, handler);
   }
 
   /**

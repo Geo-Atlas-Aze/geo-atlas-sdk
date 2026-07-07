@@ -6,8 +6,11 @@ import type {
   FitBoundsOptions,
   LayerDefinition,
   LayerVisibility,
+  RendererEventHandler,
+  RendererEventType,
   RendererOptions,
   SourceDefinition,
+  Unsubscribe,
 } from '../types.js';
 
 /**
@@ -99,4 +102,14 @@ export interface IRenderer {
    * Toggles layer visibility without removing it.
    */
   setLayerVisibility(layerId: string, visibility: LayerVisibility): void;
+
+  /**
+   * Subscribes to renderer lifecycle and interaction events.
+   */
+  on<T extends RendererEventType>(event: T, handler: RendererEventHandler<T>): Unsubscribe;
+
+  /**
+   * Removes a previously registered event handler.
+   */
+  off<T extends RendererEventType>(event: T, handler: RendererEventHandler<T>): void;
 }
