@@ -13,6 +13,7 @@ export default defineConfig({
     alias: {
       '@geoatlas/sdk-core': path.resolve(rootDir, '../../packages/core/src/index.ts'),
       '@geoatlas/sdk-dataset': path.resolve(rootDir, '../../packages/dataset/src/index.ts'),
+      '@geoatlas/sdk-rendering': path.resolve(rootDir, '../../packages/rendering/src/index.ts'),
     },
   },
 });

@@ -1,2 +1,41 @@
-/** M1: MapController and REAL interfaces will be implemented here. */
-export const RENDERING_M0_STUB = true;
+export type { IRenderer } from './contracts/IRenderer.js';
+export { MapController, createMap } from './MapController.js';
+export type { MapControllerOptions } from './MapController.js';
+export { MapLibreAdapter } from './adapters/maplibre/MapLibreAdapter.js';
+
+export {
+  ATTRIBUTION_TEXT,
+  AZ_DEFAULT_VIEW,
+  BOUNDARY_PAINT,
+  DATASET_ARTIFACT_PATHS,
+  LAYER_IDS,
+  ROAD_PAINT,
+  SOURCE_IDS,
+} from './constants.js';
+
+export type {
+  BaseLayerDefinition,
+  Bounds,
+  CameraOptions,
+  CircleLayerDefinition,
+  CirclePaintOptions,
+  CreateMapOptions,
+  FillLayerDefinition,
+  FillPaintOptions,
+  FitBoundsOptions,
+  GeoJsonData,
+  GeoJsonFeature,
+  GeoJsonFeatureCollection,
+  GeoJsonGeometry,
+  GeoJsonSourceDefinition,
+  LayerDefinition,
+  LayerKind,
+  LayerVisibility,
+  LineLayerDefinition,
+  LinePaintOptions,
+  PaddingOptions,
+  RendererEvent,
+  RendererEventType,
+  RendererOptions,
+  SourceDefinition,
+} from './types.js';
