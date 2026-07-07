@@ -9,6 +9,10 @@ import {
   ROAD_PAINT,
   SOURCE_IDS,
 } from './constants.js';
+import { DebugOverlay } from './core/DebugOverlay.js';
+import { ProgressiveRenderer } from './core/ProgressiveRenderer.js';
+import type { MemoryStats } from './core/MemoryManager.js';
+import type { PerformanceMetrics } from './core/PerformanceMonitor.js';
 import type { IRenderer } from './contracts/IRenderer.js';
 import type {
   Bounds,
@@ -24,6 +28,8 @@ import { computeBoundsFromGeoJson, parseGeoJsonArtifact } from './utils/geoJson.
 
 export interface MapControllerOptions {
   readonly verifyChecksums?: boolean;
+  readonly streaming?: boolean;
+  readonly debug?: boolean;
 }
 
 /**
@@ -33,19 +39,48 @@ export interface MapControllerOptions {
 export class MapController {
   private readonly renderer: IRenderer;
   private readonly loader: DatasetLoader;
+  private readonly streaming: boolean;
+  private readonly debug: boolean;
+  private progressive: ProgressiveRenderer | null = null;
+  private debugOverlay: DebugOverlay | null = null;
+  private viewportUnsubscribe: (() => void) | null = null;
+  private container: HTMLElement | null = null;
   private artifacts: Readonly<Record<string, string>> = Object.freeze({});
   private boundariesBounds: Bounds | null = null;
+  private activeLayers: readonly LayerPreset[] = Object.freeze([]);
 
   constructor(renderer: IRenderer, options: MapControllerOptions = {}) {
     this.renderer = renderer;
-    this.loader = new DatasetLoader({ verifyChecksums: options.verifyChecksums });
+    this.streaming = options.streaming ?? true;
+    this.debug = options.debug === true;
+    this.loader = new DatasetLoader({
+      verifyChecksums: options.verifyChecksums,
+      streaming: this.streaming,
+    });
   }
 
   /**
    * Initializes the underlying renderer inside the provided container.
    */
   async initialize(container: HTMLElement, options?: RendererOptions): Promise<void> {
+    this.container = container;
     await this.renderer.initialize(container, options);
+
+    if (!this.streaming) {
+      return;
+    }
+
+    this.progressive = new ProgressiveRenderer(this.renderer, this.loader.getChunkLoader(), {
+      debug: this.debug,
+    });
+    this.viewportUnsubscribe = this.progressive.bindViewportUpdates((handler) =>
+      this.renderer.on('moveend', () => handler()),
+    );
+
+    if (this.debug) {
+      this.debugOverlay = new DebugOverlay(container);
+      this.debugOverlay.setVisible(true);
+    }
   }
 
   /**
@@ -55,9 +90,12 @@ export class MapController {
     iso2: string,
     version: string,
     layers: readonly LayerPreset[] = ['administrative', 'roads'],
+    signal?: AbortSignal,
   ): Promise<void> {
     const ref = this.loader.resolve(iso2, version);
-    this.artifacts = await this.loader.loadArtifacts(ref, layers);
+    this.artifacts = await this.loader.loadArtifacts(ref, layers, signal);
+    this.activeLayers = layers;
+    this.progressive?.setDataset(ref, this.artifacts);
   }
 
   /**
@@ -71,7 +109,6 @@ export class MapController {
 
     const data = parseGeoJsonArtifact(raw);
     this.boundariesBounds = computeBoundsFromGeoJson(data);
-
     this.ensureGeoJsonSource(SOURCE_IDS.BOUNDARIES, data);
 
     if (!this.renderer.hasLayer(LAYER_IDS.BOUNDARIES_FILL)) {
@@ -151,8 +188,9 @@ export class MapController {
    * Fits the camera to the country boundary extent when available.
    */
   async zoomToCountry(options?: FitBoundsOptions): Promise<void> {
-    if (this.boundariesBounds) {
-      await this.renderer.fitBounds(this.boundariesBounds, {
+    const bounds = this.boundariesBounds ?? this.progressive?.getCountryBounds() ?? null;
+    if (bounds) {
+      await this.renderer.fitBounds(bounds, {
         padding: { top: 40, right: 40, bottom: 40, left: 40 },
         duration: options?.duration,
         maxZoom: options?.maxZoom ?? 10,
@@ -170,18 +208,36 @@ export class MapController {
   /**
    * Renders layers that match the provided presets.
    */
-  showLayers(layers: readonly LayerPreset[]): void {
-    const layerSet = new Set(layers);
-    const showAdmin =
-      layerSet.has('administrative') || layerSet.has('boundaries');
-    const showRoads = layerSet.has('roads') || layerSet.has('transport');
+  async showLayers(layers: readonly LayerPreset[]): Promise<void> {
+    this.activeLayers = layers;
+    if (this.progressive) {
+      await this.progressive.renderLayers(layers);
+      this.boundariesBounds = this.progressive.getCountryBounds();
+      this.updateDebugOverlay();
+      return;
+    }
 
-    if (showAdmin) {
+    const layerSet = new Set(layers);
+    if (layerSet.has('administrative') || layerSet.has('boundaries')) {
       this.showAdministrativeBoundaries();
     }
-    if (showRoads) {
+    if (layerSet.has('roads') || layerSet.has('transport')) {
       this.showRoads();
     }
+  }
+
+  /**
+   * Returns collected performance metrics when streaming is enabled.
+   */
+  getPerformanceMetrics(): PerformanceMetrics | null {
+    return this.progressive?.getPerformanceMonitor().getMetrics() ?? null;
+  }
+
+  /**
+   * Returns memory usage statistics when streaming is enabled.
+   */
+  getMemoryStats(): MemoryStats | null {
+    return this.progressive?.getMemoryManager().getStats() ?? null;
   }
 
   /**
@@ -251,13 +307,35 @@ export class MapController {
    * Destroys the map and releases renderer resources.
    */
   destroy(): void {
+    this.viewportUnsubscribe?.();
+    this.debugOverlay?.destroy();
+    this.progressive?.destroy();
+    this.loader.abortInflight();
     this.renderer.destroy();
     this.artifacts = Object.freeze({});
     this.boundariesBounds = null;
+    this.container = null;
+  }
+
+  private updateDebugOverlay(): void {
+    if (!this.debugOverlay || !this.progressive) {
+      return;
+    }
+    const metrics = this.progressive.getPerformanceMonitor().getMetrics();
+    const memory = this.progressive.getMemoryManager().getStats();
+    this.debugOverlay.update(metrics, memory, {
+      zoom: this.getZoom(),
+      visibleFeatures: metrics.renderedFeatures,
+      loadedChunks: metrics.loadedChunks,
+      fps: metrics.fps,
+      memoryBytes: memory.memoryEstimateBytes,
+      renderedLayers: [...this.activeLayers],
+    });
   }
 
   private ensureGeoJsonSource(sourceId: string, data: ReturnType<typeof parseGeoJsonArtifact>): void {
     if (this.renderer.hasSource(sourceId)) {
+      this.renderer.updateGeoJsonSource(sourceId, data);
       return;
     }
 
@@ -279,6 +357,8 @@ export async function createMap(
   const { MapLibreAdapter } = await import('./adapters/maplibre/MapLibreAdapter.js');
   const controller = new MapController(new MapLibreAdapter(), {
     verifyChecksums: options.verifyChecksums,
+    streaming: options.streaming,
+    debug: options.debug,
   });
   await controller.initialize(container, options.rendererOptions);
   return controller;

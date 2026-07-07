@@ -18,7 +18,7 @@ const mockMap = {
   resize: vi.fn(),
   on: vi.fn(() => vi.fn()),
   loadDataset: vi.fn(async () => undefined),
-  showLayers: vi.fn(),
+  showLayers: vi.fn(async () => undefined),
   zoomToCountry: vi.fn(async () => undefined),
 } satisfies Partial<MapController>;
 
@@ -54,7 +54,7 @@ describe('GeoAtlasMap', () => {
     render(<GeoAtlasMap country="AZ" version="1.0.0" onClick={onClick} />);
 
     await waitFor(() => {
-      expect(mockMap.on).toHaveBeenCalledWith('click', onClick);
+      expect(mockMap.on).toHaveBeenCalledWith('click', expect.any(Function));
     });
   });
 });

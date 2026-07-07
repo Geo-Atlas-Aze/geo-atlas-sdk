@@ -32,6 +32,23 @@ function isRetryableStatus(status: number, policy: FetchPolicy): boolean {
   return (policy.retryOn as readonly number[]).includes(status);
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function linkAbortSignals(signals: readonly AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort();
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort();
+      break;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+  return controller.signal;
+}
+
 export class FetchClient {
   private readonly fetchImpl: typeof fetch;
   private readonly policy: FetchPolicy;
@@ -45,14 +62,15 @@ export class FetchClient {
     this.repo = options.repo;
   }
 
-  async fetchText(url: string): Promise<string> {
-    const response = await this.fetchWithRetry(url);
+  async fetchText(url: string, signal?: AbortSignal): Promise<string> {
+    const response = await this.fetchWithRetry(url, signal);
     return response.text();
   }
 
   async fetchArtifact(
     dataset: GeoAtlasDatasetRef,
     relativePath: string,
+    signal?: AbortSignal,
   ): Promise<string> {
     assertArtifactPathAllowed(relativePath);
 
@@ -66,8 +84,11 @@ export class FetchClient {
           : this.buildFallbackUrl(dataset, relativePath, host);
 
       try {
-        return await this.fetchText(url);
+        return await this.fetchText(url, signal);
       } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
         lastError = error;
       }
     }
@@ -92,12 +113,12 @@ export class FetchClient {
     return host.buildBaseUrl(this.repo, datasetPath);
   }
 
-  private async fetchWithRetry(url: string): Promise<Response> {
+  private async fetchWithRetry(url: string, externalSignal?: AbortSignal): Promise<Response> {
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= this.policy.maxRetries; attempt++) {
       try {
-        const response = await this.fetchWithTimeout(url);
+        const response = await this.fetchWithTimeout(url, externalSignal);
         if (response.ok) {
           return response;
         }
@@ -108,6 +129,9 @@ export class FetchClient {
           );
         }
       } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
         lastError = error;
         if (error instanceof DatasetLoadError && error.code === 'DATASET_NOT_FOUND') {
           throw error;
@@ -124,11 +148,14 @@ export class FetchClient {
     throw new DatasetLoadError('CDN_UNAVAILABLE', `Failed to fetch ${url}`, lastError);
   }
 
-  private async fetchWithTimeout(url: string): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.policy.timeoutMs);
+  private async fetchWithTimeout(url: string, externalSignal?: AbortSignal): Promise<Response> {
+    const timeoutController = new AbortController();
+    const timer = setTimeout(() => timeoutController.abort(), this.policy.timeoutMs);
+    const signal = externalSignal
+      ? linkAbortSignals([externalSignal, timeoutController.signal])
+      : timeoutController.signal;
     try {
-      return await this.fetchImpl(url, { signal: controller.signal });
+      return await this.fetchImpl(url, { signal });
     } finally {
       clearTimeout(timer);
     }

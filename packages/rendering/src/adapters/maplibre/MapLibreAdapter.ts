@@ -311,6 +311,16 @@ export class MapLibreAdapter implements IRenderer {
   }
 
   /** @inheritdoc */
+  updateGeoJsonSource(sourceId: string, data: GeoJsonData): void {
+    const map = this.requireMap();
+    const source = map.getSource(sourceId);
+    if (!source || !('setData' in source) || typeof source.setData !== 'function') {
+      throw new Error(`GeoJSON source not found: ${sourceId}`);
+    }
+    source.setData(data as GeoJsonData);
+  }
+
+  /** @inheritdoc */
   on<T extends RendererEventType>(event: T, handler: RendererEventHandler<T>): Unsubscribe {
     const bucket = this.handlers.get(event) ?? new Set<RendererEventHandler<RendererEventType>>();
     bucket.add(handler as RendererEventHandler<RendererEventType>);

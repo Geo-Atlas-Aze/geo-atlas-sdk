@@ -11,6 +11,7 @@ import type {
   RendererOptions,
   SourceDefinition,
   Unsubscribe,
+  GeoJsonData,
 } from '../types.js';
 
 /**
@@ -102,6 +103,11 @@ export interface IRenderer {
    * Toggles layer visibility without removing it.
    */
   setLayerVisibility(layerId: string, visibility: LayerVisibility): void;
+
+  /**
+   * Updates an existing GeoJSON source payload.
+   */
+  updateGeoJsonSource(sourceId: string, data: GeoJsonData): void;
 
   /**
    * Subscribes to renderer lifecycle and interaction events.

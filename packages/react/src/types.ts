@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 import type { GeoAtlasError, LayerPreset, LngLat } from '@geoatlas/sdk-core';
 
@@ -47,4 +47,10 @@ export interface GeoAtlasMapProps {
   readonly style?: CSSProperties;
   /** Disable checksum verification for local development. */
   readonly verifyChecksums?: boolean;
+  /** Enables streaming viewport rendering. Defaults to `true`. */
+  readonly streaming?: boolean;
+  /** Enables development diagnostics overlay. */
+  readonly debug?: boolean;
+  /** Suspense fallback while dataset artifacts preload. */
+  readonly suspenseFallback?: ReactNode;
 }

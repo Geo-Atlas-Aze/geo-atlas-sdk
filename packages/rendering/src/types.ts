@@ -178,6 +178,8 @@ export interface RendererEvent {
 export interface CreateMapOptions {
   readonly rendererOptions?: RendererOptions;
   readonly verifyChecksums?: boolean;
+  readonly streaming?: boolean;
+  readonly debug?: boolean;
 }
 
 /** Layer visibility state. */

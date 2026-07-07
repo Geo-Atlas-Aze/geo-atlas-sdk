@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { memo, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { DatasetLoadError, GeoAtlasError } from '@geoatlas/sdk-core';
 import type { MapController } from '@geoatlas/sdk-rendering';
 
 import { A11Y_LABELS, GEOATLAS_AZ_DEFAULTS } from './constants.js';
+import { getDatasetResource } from './datasetResource.js';
 import type { GeoAtlasMapProps } from './types.js';
 import {
   ATTRIBUTION_TEXT,
@@ -16,10 +17,22 @@ import {
   toGeoAtlasError,
 } from './utils.js';
 
-/**
- * Interactive GeoAtlas map component for React applications.
- */
-export function GeoAtlasMap({
+interface GeoAtlasMapInnerProps extends GeoAtlasMapProps {
+  readonly suspense?: boolean;
+}
+
+function useStableLayerKey(layers: GeoAtlasMapProps['layers']): string {
+  return useMemo(
+    () => (layers ?? GEOATLAS_AZ_DEFAULTS.layers).join(','),
+    [layers],
+  );
+}
+
+function useStableControlKey(controls: GeoAtlasMapProps['controls']): string {
+  return useMemo(() => (controls ?? []).join(','), [controls]);
+}
+
+const GeoAtlasMapInner = memo(function GeoAtlasMapInner({
   country,
   version = 'latest',
   initialCenter = GEOATLAS_AZ_DEFAULTS.initialCenter,
@@ -35,21 +48,45 @@ export function GeoAtlasMap({
   className,
   style,
   verifyChecksums,
-}: GeoAtlasMapProps) {
+  streaming = true,
+  debug = false,
+  suspense = false,
+}: GeoAtlasMapInnerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapController | null>(null);
-  const layerKey = (layers ?? GEOATLAS_AZ_DEFAULTS.layers).join(',');
-  const controlKey = (controls ?? []).join(',');
+  const layerKey = useStableLayerKey(layers);
+  const controlKey = useStableControlKey(controls);
+  const resolvedLayers = useMemo(() => resolveLayers(layers), [layerKey, layers]);
+  const resolvedControls = useMemo(() => resolveControls(controls), [controlKey, controls]);
+  const resolvedVersion = useMemo(() => resolveDatasetVersion(version), [version]);
+
+  if (suspense) {
+    getDatasetResource(country, resolvedVersion, resolvedLayers, verifyChecksums).read();
+  }
+
+  const handleClick = useCallback(
+    (event: Parameters<NonNullable<GeoAtlasMapProps['onClick']>>[0]) => {
+      onClick?.(event);
+    },
+    [onClick],
+  );
+
+  const handleMoveEnd = useCallback(
+    (state: Parameters<NonNullable<GeoAtlasMapProps['onMoveEnd']>>[0]) => {
+      onMoveEnd?.(state);
+    },
+    [onMoveEnd],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) {
+    if (!container || typeof window === 'undefined') {
       return;
     }
 
     if (offline) {
       onError?.(
-        new GeoAtlasError('OFFLINE_CACHE_MISS', 'Offline mode is not available in M2'),
+        new GeoAtlasError('OFFLINE_CACHE_MISS', 'Offline mode is not available in M2.5'),
       );
       return;
     }
@@ -63,15 +100,14 @@ export function GeoAtlasMap({
 
     let disposed = false;
     const unsubscribers: Array<() => void> = [];
-    const resolvedLayers = resolveLayers(layers);
-    const resolvedControls = resolveControls(controls);
     const controlOptions = resolveControlOptions(resolvedControls);
-    const resolvedVersion = resolveDatasetVersion(version);
 
     const init = async (): Promise<void> => {
       try {
         const map = await createMap(container, {
           verifyChecksums,
+          streaming,
+          debug,
           rendererOptions: {
             center: initialCenter,
             zoom: initialZoom,
@@ -90,15 +126,15 @@ export function GeoAtlasMap({
         enhanceMapAccessibility(container);
 
         if (onClick) {
-          unsubscribers.push(map.on('click', onClick));
+          unsubscribers.push(map.on('click', handleClick));
         }
 
         if (onMoveEnd) {
-          unsubscribers.push(map.on('moveend', onMoveEnd));
+          unsubscribers.push(map.on('moveend', handleMoveEnd));
         }
 
         await map.loadDataset(country, resolvedVersion, resolvedLayers);
-        map.showLayers(resolvedLayers);
+        await map.showLayers(resolvedLayers);
         await map.zoomToCountry();
 
         if (!disposed) {
@@ -132,7 +168,7 @@ export function GeoAtlasMap({
     };
   }, [
     country,
-    version,
+    resolvedVersion,
     initialCenter,
     initialZoom,
     layerKey,
@@ -140,10 +176,15 @@ export function GeoAtlasMap({
     offline,
     engine,
     onLoad,
-    onClick,
-    onMoveEnd,
+    handleClick,
+    handleMoveEnd,
     onError,
     verifyChecksums,
+    streaming,
+    debug,
+    suspense,
+    resolvedLayers,
+    resolvedControls,
   ]);
 
   return (
@@ -155,4 +196,18 @@ export function GeoAtlasMap({
       aria-label={`${A11Y_LABELS.map} — ${country}`}
     />
   );
+});
+
+/**
+ * Interactive GeoAtlas map component for React applications.
+ */
+export function GeoAtlasMap(props: GeoAtlasMapProps) {
+  if (props.suspenseFallback !== undefined) {
+    return (
+      <Suspense fallback={props.suspenseFallback}>
+        <GeoAtlasMapInner {...props} suspense />
+      </Suspense>
+    );
+  }
+  return <GeoAtlasMapInner {...props} />;
 }

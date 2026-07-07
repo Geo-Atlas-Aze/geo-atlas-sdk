@@ -2,6 +2,14 @@ export type { IRenderer } from './contracts/IRenderer.js';
 export { MapController, createMap } from './MapController.js';
 export type { MapControllerOptions } from './MapController.js';
 export { MapLibreAdapter } from './adapters/maplibre/MapLibreAdapter.js';
+export { ViewportEngine } from './core/ViewportEngine.js';
+export { RenderQueue } from './core/RenderQueue.js';
+export { MemoryManager } from './core/MemoryManager.js';
+export type { MemoryStats } from './core/MemoryManager.js';
+export { PerformanceMonitor } from './core/PerformanceMonitor.js';
+export type { PerformanceMetrics } from './core/PerformanceMonitor.js';
+export { ProgressiveRenderer } from './core/ProgressiveRenderer.js';
+export { DebugOverlay } from './core/DebugOverlay.js';
 
 export {
   ATTRIBUTION_TEXT,
